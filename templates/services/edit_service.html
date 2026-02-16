@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header>
+  <h2>Editar Servicio</h2>
+</header>
+
+<section>
+  <form id="editServiceForm">
+    <label>Tipo de Servicio:</label><br>
+    <input type="text" id="service_type" value="{{ service.service_type }}" required><br><br>
+
+    <label>Fecha:</label><br>
+    <input type="date" id="service_date" value="{{ service.service_date }}" required><br><br>
+
+    <label>Kilometraje:</label><br>
+    <input type="number" id="mileage" value="{{ service.mileage }}" required><br><br>
+
+    <label>Costo:</label><br>
+    <input type="number" step="0.01" id="cost" value="{{ service.cost }}" required><br><br>
+
+    <button type="submit">Guardar cambios</button>
+  </form>
+
+  <p id="msg"></p>
+  <br>
+  <a href="/view/services">⬅ Volver a Servicios</a>
+</section>
+
+<script>
+document.getElementById("editServiceForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const msg = document.getElementById("msg");
+  msg.textContent = "Actualizando...";
+
+  const body = {
+    service_type: document.getElementById("service_type").value,
+    service_date: document.getElementById("service_date").value,
+    mileage: parseInt(document.getElementById("mileage").value),
+    cost: parseFloat(document.getElementById("cost").value)
+  };
+
+  const res = await fetch("/service-records/{{ service.id }}", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  const data = await res.json();
+
+  if(!res.ok){
+    msg.textContent = data.error || "Error al actualizar";
+    return;
+  }
+
+  msg.textContent = "Servicio actualizado ✅";
+  window.location.href = "/view/services";
+});
+</script>
+
+{% endblock %}

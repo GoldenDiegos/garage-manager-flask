@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header class="card">
+  <h2>Servicios (Historial)</h2>
+  <a class="btn btn-secondary" href="/view/services/create">Crear Servicio</a>
+</header>
+
+<section class="card" id="services-container">
+  <p>Cargando servicios...</p>
+</section>
+
+<script>
+async function loadServices(){
+  const res = await fetch("/service-records");
+  const services = await res.json();
+  const container = document.getElementById("services-container");
+
+  if(!services.length){
+    container.innerHTML = "<p><b>No hay servicios registrados.</b></p>";
+    return;
+  }
+
+  let html = "<ul>";
+  services.forEach(s => {
+    html += `
+      <li>
+        <b>${s.service_type}</b>
+        <br>
+        <small>Fecha: ${s.service_date} | Km: ${s.mileage} | $${s.cost} | Car ID: ${s.car_id}</small>
+        <br><br>
+
+        <div class="actions">
+          <a class="btn btn-secondary" href="/view/services/${s.id}/edit">Edit</a>
+          <button type="button" onclick="deleteService(${s.id})">Delete</button>
+        </div>
+      </li>
+      <hr>
+    `;
+  });
+  html += "</ul>";
+
+  container.innerHTML = html;
+}
+
+async function deleteService(id){
+  if(!confirm("¿Eliminar este servicio?")) return;
+
+  const res = await fetch("/service-records/" + id, { method: "DELETE" });
+  const data = await res.json();
+
+  alert(data.message || data.error || "Done");
+  loadServices();
+}
+
+loadServices();
+</script>
+
+{% endblock %}

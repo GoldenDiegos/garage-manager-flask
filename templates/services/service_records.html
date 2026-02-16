@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<header>
+  <h2>Service Records</h2>
+</header>
+
+<section>
+  <h3>{{ car.brand }} {{ car.model }} ({{ car.plate }})</h3>
+  <p><strong>Owner:</strong> {{ car.user_name }}</p>
+  <p><strong>Year:</strong> {{ car.year }}</p>
+</section>
+
+<hr>
+
+<section>
+  <h3>History</h3>
+
+  {% if services|length == 0 %}
+    <p>No service records yet.</p>
+  {% else %}
+    <ul>
+      {% for s in services %}
+        <li>
+          <strong>{{ s.service_type }}</strong> -
+          {{ s.service_date }} -
+          {{ s.mileage }} km -
+          ${{ s.cost }}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+
+<hr>
+
+<section>
+  <h3>Agregar nuevo serivico </h3>
+
+  <form action="/cars/{{ car.id }}/services" method="POST">
+    <label>Tipo de Servicio:</label><br>
+    <input type="text" name="service_type" required><br><br>
+
+    <label>Fecha:</label><br>
+    <input type="date" name="service_date" required><br><br>
+
+    <label>Kilometraje:</label><br>
+    <input type="number" name="mileage" required><br><br>
+
+    <label>Costo:</label><br>
+    <input type="number" step="0.01" name="cost" required><br><br>
+
+    <button type="submit">Add Service</button>
+  </form>
+</section>
+
+<br>
+<a href="/view/cars">⬅ Back to Cars</a>
+
+{% endblock %}
