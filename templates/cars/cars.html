@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 
 {% block content %}
+
 <header class="card">
-  <h2>Automoviles</h2>
-  <a class="btn btn-secondary" href="/view/cars/create">Agregar Carro</a>
+  <h2>Automóviles</h2>
+  <a class="btn btn-edit" href="/view/cars/create">+ Agregar Carro</a>
 </header>
 
 <section class="card" id="cars-container">
-  <p>Cargando carros...</p>
+  <p>Cargando autos...</p>
 </section>
 
 <script>
@@ -19,43 +20,63 @@ async function loadCars() {
 
   if (!cars.length) {
     container.innerHTML = `
-      <p><b>No cars found.</b></p>
-      <p>Create one first using <a href="/view/cars/create">Add Car</a>.</p>
+      <p><b>No hay autos registrados.</b></p>
+      <p>Agrega uno desde <a href="/view/cars/create">Agregar Carro</a>.</p>
     `;
     return;
   }
 
-  let html = "<ul>";
+  let html = "";
+
   cars.forEach(car => {
     html += `
-      <li>
-        <b>${car.brand} ${car.model}</b> (${car.year}) - ${car.plate || "No plate"}<br>
-        <small>Owner: ${car.user_name}</small><br><br>
+      <section class="card">
+        <header>
+          <h3>${car.brand} ${car.model} (${car.year})</h3>
+        </header>
+
+        <div class="car-info">
+          <p><strong>Owner:</strong> ${car.user_name}</p>
+          <p><strong>Plate:</strong> ${car.plate || "Sin placa"}</p>
+        </div>
 
         <div class="actions">
-          <a class="btn btn-secondary" href="/view/cars/${car.id}/services">Ver servicios</a>
-          <a class="btn btn-secondary" href="/view/cars/${car.id}/edit">Edit</a>
-          <button type="button" onclick="deleteCar(${car.id})">Delete</button>
+
+          <a class="btn btn-primary" href="/view/cars/${car.id}/services">
+            Servicios
+          </a>
+
+          <a class="btn btn-docs" href="/view/cars/${car.id}/documents">
+            Documentos
+          </a>
+
+          <a class="btn btn-edit" href="/view/cars/${car.id}/edit">
+            Editar
+          </a>
+
+          <button class="btn btn-danger" onclick="deleteCar(${car.id})">
+            Eliminar
+          </button>
+
         </div>
-      </li>
-      <hr>
+      </section>
     `;
   });
-  html += "</ul>";
 
   container.innerHTML = html;
 }
 
-async function deleteCar(carId) {
-  if (!confirm("Delete this car?")) return;
+async function deleteCar(id) {
+  if (!confirm("¿Seguro que deseas eliminar este carro?")) return;
 
-  const res = await fetch("/cars/" + carId, { method: "DELETE" });
+  const res = await fetch(`/cars/${id}`, { method: "DELETE" });
   const data = await res.json();
 
-  alert(data.message || data.error || "Done");
+  alert(data.message || data.error || "Listo");
   loadCars();
 }
 
 loadCars();
 </script>
+
 {% endblock %}
