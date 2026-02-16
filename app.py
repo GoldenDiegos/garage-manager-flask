@@ -1,11 +1,11 @@
 from flask import Flask, jsonify, request, render_template, redirect, url_for
 import sqlite3
+import os
 
 app = Flask(__name__)
 
-
-DATABASE = "database.db"
-
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE = os.path.join(BASE_DIR, "database", "database.db")
 
 # -------------------------
 # DB HELPERS
@@ -55,6 +55,19 @@ def init_db():
     )
     """)
 
+    # ✅ NUEVA TABLA: DOCUMENTOS DEL CARRO
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS car_documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        car_id INTEGER NOT NULL,
+        doc_type TEXT NOT NULL,
+        folio TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        notes TEXT,
+        FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -75,8 +88,12 @@ def fetch_car_with_owner(conn, car_id: int):
     """, (car_id,)).fetchone()
 
 
-def row_to_dict(row):
-    return dict(row) if row is not None else None
+def fetch_document(conn, doc_id: int):
+    return conn.execute("""
+        SELECT id, car_id, doc_type, folio, expires_at, notes
+        FROM car_documents
+        WHERE id = ?
+    """, (doc_id,)).fetchone()
 
 
 init_db()
@@ -152,6 +169,152 @@ def services_edit_page(service_id):
         return "Service record not found", 404
 
     return render_template("services/edit_service.html", service=service)
+
+
+# -------------------------
+# ✅ DOCUMENTS (por carro)
+# -------------------------
+
+@app.route("/view/cars/<int:car_id>/documents", methods=["GET"])
+def view_car_documents(car_id):
+    """
+    Vista por carro: documentos.
+    Template: templates/documents/car_documents.html   ✅
+    """
+    conn = get_db_connection()
+
+    car = fetch_car_with_owner(conn, car_id)
+    if car is None:
+        conn.close()
+        return "Car not found", 404
+
+    documents = conn.execute("""
+        SELECT id, car_id, doc_type, folio, expires_at, notes
+        FROM car_documents
+        WHERE car_id = ?
+        ORDER BY expires_at DESC
+    """, (car_id,)).fetchall()
+
+    conn.close()
+
+    # ✅ FIX: aquí debe ir el template por-carro
+    return render_template("documents/car_documents.html", car=car, documents=documents)
+
+
+@app.route("/cars/<int:car_id>/documents", methods=["POST"])
+def create_document_by_car(car_id):
+    """
+    Crear documento para un coche.
+    - Template (form-data): redirige a /view/cars/<id>/documents
+    - Postman (JSON): responde JSON 201
+    """
+    data_json = request.get_json(silent=True)
+
+    if data_json:
+        doc_type = (data_json.get("doc_type") or "").strip()
+        folio = (data_json.get("folio") or "").strip()
+        expires_at = (data_json.get("expires_at") or "").strip()
+        notes = (data_json.get("notes") or "").strip()
+    else:
+        doc_type = (request.form.get("doc_type") or "").strip()
+        folio = (request.form.get("folio") or "").strip()
+        expires_at = (request.form.get("expires_at") or "").strip()
+        notes = (request.form.get("notes") or "").strip()
+
+    if not doc_type or not folio or not expires_at:
+        if data_json:
+            return jsonify({"error": "Faltan campos: doc_type, folio, expires_at"}), 400
+        return "Faltan campos del formulario", 400
+
+    conn = get_db_connection()
+
+    car_exists = conn.execute("SELECT id FROM cars WHERE id = ?", (car_id,)).fetchone()
+    if car_exists is None:
+        conn.close()
+        if data_json:
+            return jsonify({"error": "Coche no encontrado"}), 404
+        return "Car not found", 404
+
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO car_documents (car_id, doc_type, folio, expires_at, notes)
+        VALUES (?, ?, ?, ?, ?)
+    """, (car_id, doc_type, folio, expires_at, notes if notes else None))
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+
+    if data_json:
+        return jsonify({"message": "Documento creado", "id": new_id}), 201
+
+    return redirect(url_for("view_car_documents", car_id=car_id))
+
+
+@app.route("/documents/<int:doc_id>/edit", methods=["GET", "POST"])
+def edit_document(doc_id):
+    """
+    Editar documento:
+    - GET: templates/documents/edit_document.html
+    - POST: actualiza y regresa a /view/cars/<car_id>/documents
+    """
+    conn = get_db_connection()
+    document = fetch_document(conn, doc_id)
+
+    if document is None:
+        conn.close()
+        return "Document not found", 404
+
+    car = fetch_car_with_owner(conn, document["car_id"])
+    if car is None:
+        conn.close()
+        return "Car not found", 404
+
+    if request.method == "GET":
+        conn.close()
+        return render_template("documents/edit_document.html", car=car, document=document)
+
+    # POST
+    doc_type = (request.form.get("doc_type") or "").strip()
+    folio = (request.form.get("folio") or "").strip()
+    expires_at = (request.form.get("expires_at") or "").strip()
+    notes = (request.form.get("notes") or "").strip()
+
+    if not doc_type or not folio or not expires_at:
+        conn.close()
+        return "Faltan campos del formulario", 400
+
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE car_documents
+        SET doc_type = ?, folio = ?, expires_at = ?, notes = ?
+        WHERE id = ?
+    """, (doc_type, folio, expires_at, notes if notes else None, doc_id))
+    conn.commit()
+    conn.close()
+
+    return redirect(url_for("view_car_documents", car_id=car["id"]))
+
+
+@app.route("/documents/<int:doc_id>/delete", methods=["POST"])
+def delete_document_template(doc_id):
+    """
+    Delete desde template (form POST).
+    """
+    conn = get_db_connection()
+    document = fetch_document(conn, doc_id)
+
+    if document is None:
+        conn.close()
+        return "Document not found", 404
+
+    car_id = document["car_id"]
+
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM car_documents WHERE id = ?", (doc_id,))
+    conn.commit()
+    conn.close()
+
+    return redirect(url_for("view_car_documents", car_id=car_id))
 
 
 # -------------------------
@@ -283,7 +446,6 @@ def create_car():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Verifica usuario
     user_exists = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
     if user_exists is None:
         conn.close()
@@ -357,7 +519,6 @@ def update_car(car_id):
         SET brand = ?, model = ?, year = ?, plate = ?
         WHERE id = ?
     """, (brand, model, year, plate, car_id))
-
     conn.commit()
 
     if cursor.rowcount == 0:
@@ -385,25 +546,16 @@ def delete_car(car_id):
 
 
 # -------------------------
-# API SERVICE RECORDS (CRUD COMPLETO PARA POSTMAN)
+# API SERVICE RECORDS (CRUD)
 # -------------------------
 
 @app.route("/service-records", methods=["GET"])
 def get_service_records():
-    """
-    Lista todos los service records (útil para Postman).
-    """
     conn = get_db_connection()
     rows = conn.execute("""
-        SELECT
-            sr.id,
-            sr.car_id,
-            sr.service_type,
-            sr.service_date,
-            sr.mileage,
-            sr.cost
-        FROM service_records sr
-        ORDER BY sr.id DESC
+        SELECT id, car_id, service_type, service_date, mileage, cost
+        FROM service_records
+        ORDER BY id DESC
     """).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows]), 200
@@ -427,11 +579,6 @@ def get_service_record(record_id):
 
 @app.route("/service-records", methods=["POST"])
 def create_service_record_general():
-    """
-    Crear service record indicando car_id (para Postman).
-    Body JSON:
-    { "car_id": 1, "service_type": "...", "service_date": "YYYY-MM-DD", "mileage": 123, "cost": 99.9 }
-    """
     data = request.get_json(silent=True) or {}
 
     car_id = data.get("car_id")
@@ -451,7 +598,6 @@ def create_service_record_general():
         return jsonify({"error": "car_id/mileage deben ser int y cost debe ser número"}), 400
 
     conn = get_db_connection()
-
     car_exists = conn.execute("SELECT id FROM cars WHERE id = ?", (car_id,)).fetchone()
     if car_exists is None:
         conn.close()
@@ -495,7 +641,6 @@ def update_service_record(record_id):
         SET service_type = ?, service_date = ?, mileage = ?, cost = ?
         WHERE id = ?
     """, (service_type, service_date, mileage, cost, record_id))
-
     conn.commit()
 
     if cursor.rowcount == 0:
@@ -528,10 +673,6 @@ def delete_service_record(record_id):
 
 @app.route("/view/cars/<int:car_id>/services", methods=["GET"])
 def view_car_services(car_id):
-    """
-    Vista por carro: historial de servicios.
-    Template: templates/services/service_records.html
-    """
     conn = get_db_connection()
 
     car = fetch_car_with_owner(conn, car_id)
@@ -557,11 +698,6 @@ def create_service_record_by_car(car_id):
     - Template (form-data): redirige a /view/cars/<id>/services
     - Postman (JSON): responde JSON 201
     """
-
-    print("CONTENT-TYPE:", request.content_type)
-    print("RAW DATA:", request.get_data(as_text=True))
-    print("FORM:", dict(request.form))
-
     data_json = request.get_json(silent=True)
 
     if data_json:
@@ -570,10 +706,10 @@ def create_service_record_by_car(car_id):
         mileage = data_json.get("mileage")
         cost = data_json.get("cost")
     else:
-        service_type = (request.form.get("service_type") or request.form.get("TipoServicio") or "").strip()
-        service_date = (request.form.get("service_date") or request.form.get("Fecha") or request.form.get("fecha") or "").strip()
-        mileage = (request.form.get("mileage") or request.form.get("Kilometraje") or request.form.get("kilometraje") or "").strip()
-        cost = (request.form.get("cost") or request.form.get("costo") or request.form.get("Costo") or "").strip()
+        service_type = (request.form.get("service_type") or "").strip()
+        service_date = (request.form.get("service_date") or "").strip()
+        mileage = (request.form.get("mileage") or "").strip()
+        cost = (request.form.get("cost") or "").strip()
 
     if not service_type or not service_date or not str(mileage).strip() or not str(cost).strip():
         if data_json:
@@ -602,7 +738,6 @@ def create_service_record_by_car(car_id):
         INSERT INTO service_records (car_id, service_type, service_date, mileage, cost)
         VALUES (?, ?, ?, ?, ?)
     """, (car_id, service_type, service_date, mileage, cost))
-
     conn.commit()
     new_id = cur.lastrowid
     conn.close()
@@ -612,6 +747,132 @@ def create_service_record_by_car(car_id):
 
     return redirect(url_for("view_car_services", car_id=car_id))
 
+
+# -------------------------
+# ✅ API CAR DOCUMENTS (OPCIONAL PARA POSTMAN)
+# -------------------------
+
+@app.route("/car-documents", methods=["GET"])
+def get_car_documents():
+    conn = get_db_connection()
+    rows = conn.execute("""
+        SELECT id, car_id, doc_type, folio, expires_at, notes
+        FROM car_documents
+        ORDER BY id DESC
+    """).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows]), 200
+
+
+@app.route("/car-documents/<int:doc_id>", methods=["GET"])
+def get_car_document(doc_id):
+    conn = get_db_connection()
+    row = fetch_document(conn, doc_id)
+    conn.close()
+
+    if row is None:
+        return jsonify({"error": "Documento no encontrado"}), 404
+
+    return jsonify(dict(row)), 200
+
+
+@app.route("/car-documents", methods=["POST"])
+def create_car_document_general():
+    """
+    Crear documento indicando car_id (para Postman).
+    Body JSON:
+    { "car_id": 1, "doc_type": "...", "folio": "...", "expires_at": "YYYY-MM-DD", "notes": "..." }
+    """
+    data = request.get_json(silent=True) or {}
+
+    car_id = data.get("car_id")
+    doc_type = (data.get("doc_type") or "").strip()
+    folio = (data.get("folio") or "").strip()
+    expires_at = (data.get("expires_at") or "").strip()
+    notes = (data.get("notes") or "").strip()
+
+    if car_id is None or not doc_type or not folio or not expires_at:
+        return jsonify({"error": "Faltan campos: car_id, doc_type, folio, expires_at"}), 400
+
+    try:
+        car_id = int(car_id)
+    except (ValueError, TypeError):
+        return jsonify({"error": "car_id debe ser numérico"}), 400
+
+    conn = get_db_connection()
+    car_exists = conn.execute("SELECT id FROM cars WHERE id = ?", (car_id,)).fetchone()
+    if car_exists is None:
+        conn.close()
+        return jsonify({"error": "Coche no encontrado"}), 404
+
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO car_documents (car_id, doc_type, folio, expires_at, notes)
+        VALUES (?, ?, ?, ?, ?)
+    """, (car_id, doc_type, folio, expires_at, notes if notes else None))
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+
+    return jsonify({"message": "Documento creado", "id": new_id}), 201
+
+
+@app.route("/car-documents/<int:doc_id>", methods=["PUT"])
+def update_car_document(doc_id):
+    data = request.get_json(silent=True) or {}
+
+    doc_type = (data.get("doc_type") or "").strip()
+    folio = (data.get("folio") or "").strip()
+    expires_at = (data.get("expires_at") or "").strip()
+    notes = (data.get("notes") or "").strip()
+
+    if not doc_type or not folio or not expires_at:
+        return jsonify({"error": "Faltan campos: doc_type, folio, expires_at"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE car_documents
+        SET doc_type = ?, folio = ?, expires_at = ?, notes = ?
+        WHERE id = ?
+    """, (doc_type, folio, expires_at, notes if notes else None, doc_id))
+    conn.commit()
+
+    if cursor.rowcount == 0:
+        conn.close()
+        return jsonify({"error": "Documento no encontrado"}), 404
+
+    conn.close()
+    return jsonify({"message": "Documento actualizado"}), 200
+
+
+# -------------------------
+# ✅ DOCUMENTS (GLOBAL VIEW)
+# -------------------------
+@app.route("/view/documents", methods=["GET"])
+def documents_page():
+    conn = get_db_connection()
+    documents = conn.execute("""
+        SELECT
+            cd.id,
+            cd.car_id,
+            cd.doc_type,
+            cd.folio,
+            cd.expires_at,
+            cd.notes,
+            c.brand,
+            c.model,
+            c.plate,
+            u.name AS user_name
+        FROM car_documents cd
+        JOIN cars c ON c.id = cd.car_id
+        JOIN users u ON u.id = c.user_id
+        ORDER BY cd.expires_at DESC, cd.id DESC
+    """).fetchall()
+    conn.close()
+
+    return render_template("documents/documents.html", documents=documents)
 
 
 if __name__ == "__main__":
