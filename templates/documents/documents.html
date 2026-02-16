@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header class="card">
+  <h2>Documents</h2>
+  <p style="color:#475569;">Listado global de documentos registrados en el sistema.</p>
+</header>
+
+<section class="card" id="docs-container">
+  {% if documents|length == 0 %}
+    <p><b>No hay documentos registrados.</b></p>
+  {% else %}
+    <ul>
+      {% for d in documents %}
+        <li>
+          <b>{{ d.doc_type }}</b> |
+          Folio: {{ d.folio }} |
+          Vence: {{ d.expires_at }}
+          <br>
+          <small>
+            Car: {{ d.brand }} {{ d.model }} ({{ d.plate or "sin placa" }}) —
+            Owner: {{ d.user_name }}
+          </small>
+          <br><br>
+
+          <div class="actions">
+            <a class="btn btn-docs" href="/view/cars/{{ d.car_id }}/documents">Ver por carro</a>
+            <a class="btn btn-edit" href="/documents/{{ d.id }}/edit">Editar</a>
+
+            <form action="/documents/{{ d.id }}/delete" method="POST" style="display:inline;">
+              <button class="btn btn-danger" type="submit">Eliminar</button>
+            </form>
+          </div>
+        </li>
+        <hr>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+
+{% endblock %}
