@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<header class="card">
+  <h2>Automoviles</h2>
+  <a class="btn btn-secondary" href="/view/cars/create">Agregar Carro</a>
+</header>
+
+<section class="card" id="cars-container">
+  <p>Cargando carros...</p>
+</section>
+
+<script>
+async function loadCars() {
+  const res = await fetch("/cars");
+  const cars = await res.json();
+
+  const container = document.getElementById("cars-container");
+
+  if (!cars.length) {
+    container.innerHTML = `
+      <p><b>No cars found.</b></p>
+      <p>Create one first using <a href="/view/cars/create">Add Car</a>.</p>
+    `;
+    return;
+  }
+
+  let html = "<ul>";
+  cars.forEach(car => {
+    html += `
+      <li>
+        <b>${car.brand} ${car.model}</b> (${car.year}) - ${car.plate || "No plate"}<br>
+        <small>Owner: ${car.user_name}</small><br><br>
+
+        <div class="actions">
+          <a class="btn btn-secondary" href="/view/cars/${car.id}/services">Ver servicios</a>
+          <a class="btn btn-secondary" href="/view/cars/${car.id}/edit">Edit</a>
+          <button type="button" onclick="deleteCar(${car.id})">Delete</button>
+        </div>
+      </li>
+      <hr>
+    `;
+  });
+  html += "</ul>";
+
+  container.innerHTML = html;
+}
+
+async function deleteCar(carId) {
+  if (!confirm("Delete this car?")) return;
+
+  const res = await fetch("/cars/" + carId, { method: "DELETE" });
+  const data = await res.json();
+
+  alert(data.message || data.error || "Done");
+  loadCars();
+}
+
+loadCars();
+</script>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header>
+  <h2>Editar Carro</h2>
+</header>
+
+<section>
+  <form id="editCarForm">
+    <label>Marca:</label><br>
+    <input type="text" id="brand" value="{{ car.brand }}" required><br><br>
+
+    <label>Modelo:</label><br>
+    <input type="text" id="model" value="{{ car.model }}" required><br><br>
+
+    <label>Año:</label><br>
+    <input type="number" id="year" value="{{ car.year }}" required><br><br>
+
+    <label>Placas:</label><br>
+    <input type="text" id="plate" value="{{ car.plate }}"><br><br>
+
+    <button type="submit">Guardar cambios</button>
+  </form>
+
+  <p id="msg"></p>
+  <br>
+  <a href="/view/cars">⬅ Volver a Cars</a>
+</section>
+
+<script>
+document.getElementById("editCarForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const msg = document.getElementById("msg");
+  msg.textContent = "Actualizando...";
+
+  const body = {
+    brand: document.getElementById("brand").value,
+    model: document.getElementById("model").value,
+    year: parseInt(document.getElementById("year").value),
+    plate: document.getElementById("plate").value
+  };
+
+  const res = await fetch("/cars/{{ car.id }}", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    msg.textContent = data.error || "Error al actualizar";
+    return;
+  }
+
+  msg.textContent = "Carro actualizado ✅";
+  window.location.href = "/view/cars";
+});
+</script>
+
+{% endblock %}
