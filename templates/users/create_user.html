@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header>
+  <h2>Crear Usuario</h2>
+</header>
+
+<section>
+  <form id="userForm">
+    <label>Nombre:</label><br>
+    <input type="text" id="name" required><br><br>
+
+    <label>Correo:</label><br>
+    <input type="email" id="email" required><br><br>
+
+    <label>Contraseña:</label><br>
+    <input type="password" id="password" required><br><br>
+
+    <button type="submit">Crear Usuario</button>
+  </form>
+
+  <p id="msg"></p>
+  <br>
+  <a href="/view/users">⬅ Volver a Usuarios</a>
+</section>
+
+<script>
+document.getElementById("userForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const msg = document.getElementById("msg");
+  msg.textContent = "Guardando...";
+
+  const body = {
+    name: document.getElementById("name").value,
+    email: document.getElementById("email").value,
+    password: document.getElementById("password").value
+  };
+
+  const res = await fetch("/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    msg.textContent = data.error || "Error al crear usuario";
+    return;
+  }
+
+  msg.textContent = "Usuario creado ✅";
+  window.location.href = "/view/users";
+});
+</script>
+
+{% endblock %}

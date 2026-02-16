@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header>
+  <h2>Usuarios</h2>
+  <a href="/view/users/create">+ Crear Usuario</a>
+</header>
+
+<section id="users-container">
+  <p>Cargando usuarios...</p>
+</section>
+
+<script>
+async function loadUsers(){
+  const res = await fetch("/users");
+  const users = await res.json();
+  const container = document.getElementById("users-container");
+
+  if(!users.length){
+    container.innerHTML = "<p>No hay usuarios.</p>";
+    return;
+  }
+
+  let html = "<ul>";
+  users.forEach(u => {
+    html += `
+      <li>
+        <b>${u.name}</b> - ${u.email}
+        <button onclick="deleteUser(${u.id})">Delete</button>
+      </li>
+      <hr>
+    `;
+  });
+  html += "</ul>";
+
+  container.innerHTML = html;
+}
+
+async function deleteUser(id){
+  if(!confirm("¿Eliminar este usuario?")) return;
+
+  const res = await fetch("/users/" + id, { method: "DELETE" });
+  const data = await res.json();
+
+  alert(data.message || data.error || "Done");
+  loadUsers();
+}
+
+loadUsers();
+</script>
+
+{% endblock %}
