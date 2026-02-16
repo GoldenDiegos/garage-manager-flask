@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<section class="card">
+  <h2>Editar Documento</h2>
+
+  <h3>{{ car.brand }} {{ car.model }} ({{ car.plate }})</h3>
+  <p><strong>Propietario:</strong> {{ car.user_name }}</p>
+</section>
+
+<section class="card">
+
+  <form action="/documents/{{ document.id }}/edit" method="POST">
+
+    <label>Tipo de Documento:</label>
+    <input type="text" name="doc_type" value="{{ document.doc_type }}" required>
+
+    <label>Folio:</label>
+    <input type="text" name="folio" value="{{ document.folio }}" required>
+
+    <label>Fecha de Vencimiento:</label>
+    <input type="date" name="expires_at" value="{{ document.expires_at }}" required>
+
+    <button type="submit">Actualizar Documento</button>
+
+  </form>
+
+</section>
+
+<a href="/view/cars/{{ car.id }}/documents">⬅ Volver a Documentos</a>
+
+{% endblock %}
