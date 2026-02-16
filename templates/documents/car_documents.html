@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header class="card">
+  <h2>Documentos del Vehículo</h2>
+  <p style="color:#475569;">
+    {{ car.brand }} {{ car.model }} ({{ car.plate }}) — Owner: {{ car.user_name }}
+  </p>
+</header>
+
+<section class="card">
+  <h3>Historial</h3>
+
+  {% if documents|length == 0 %}
+    <p><b>No hay documentos registrados.</b></p>
+  {% else %}
+    <ul>
+      {% for d in documents %}
+        <li>
+          <b>{{ d.doc_type }}</b> |
+          Folio: {{ d.folio }} |
+          Vence: {{ d.expires_at }}
+          <br><br>
+
+          <div class="actions">
+            <a class="btn btn-edit" href="/documents/{{ d.id }}/edit">Editar</a>
+
+            <form action="/documents/{{ d.id }}/delete" method="POST" style="display:inline;">
+              <button class="btn btn-danger" type="submit">Eliminar</button>
+            </form>
+          </div>
+        </li>
+        <hr>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h3>Agregar Documento</h3>
+
+  <form action="/cars/{{ car.id }}/documents" method="POST">
+    <label>Tipo de documento</label>
+    <input type="text" name="doc_type" required>
+
+    <label>Folio</label>
+    <input type="text" name="folio" required>
+
+    <label>Vence</label>
+    <input type="date" name="expires_at" required>
+
+    <label>Notas (opcional)</label>
+    <input type="text" name="notes">
+
+    <button class="btn btn-docs" type="submit">Agregar Documento</button>
+  </form>
+</section>
+
+<a href="/view/cars">⬅ Volver a Cars</a>
+
+{% endblock %}
