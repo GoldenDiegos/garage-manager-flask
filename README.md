@@ -9,4 +9,5 @@ El objetivo principal del proyecto es desarrollar un sistema web funcional que p
  Arquitectura General del Sistema
 ## Diagrama Entidad-Relación
 
-![Diagrama ER](assets/assets/Diagrama-entidad-relacion.png)
+![Diagrama ER](assets/Diagrama-entidad-relacion.png)
+
