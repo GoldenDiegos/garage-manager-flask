@@ -1,11 +1,21 @@
-from flask import Flask, jsonify, request, render_template, redirect, url_for
+from flask import Flask, jsonify, request, render_template, redirect, url_for, session
 import sqlite3
 import os
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE = os.path.join(BASE_DIR, "database", "database.db")
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
+PUBLIC_ENDPOINTS = {
+    "static",
+    "login_page",
+    "register_page",
+    "logout",
+    "create_user",
+    "initialize_database",
+}
 
 # -------------------------
 # DB HELPERS
@@ -55,7 +65,6 @@ def init_db():
     )
     """)
 
-    # ✅ NUEVA TABLA: DOCUMENTOS DEL CARRO
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS car_documents (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,6 +105,55 @@ def fetch_document(conn, doc_id: int):
     """, (doc_id,)).fetchone()
 
 
+def create_user_in_db(name: str, email: str, password: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
+            (name, email, generate_password_hash(password)),
+        )
+        conn.commit()
+        user_id = cursor.lastrowid
+    except sqlite3.IntegrityError:
+        conn.close()
+        return None, "email_exists"
+
+    conn.close()
+    return user_id, None
+
+
+def verify_password(stored_password: str, raw_password: str):
+    if stored_password.startswith("scrypt:") or stored_password.startswith("pbkdf2:"):
+        return check_password_hash(stored_password, raw_password)
+    return stored_password == raw_password
+
+
+@app.before_request
+def enforce_authentication():
+    if request.endpoint in PUBLIC_ENDPOINTS:
+        return None
+    if request.endpoint is None:
+        return None
+    if request.method == "OPTIONS":
+        return None
+    if session.get("user_id"):
+        return None
+    if request.path.startswith("/view") or request.path == "/":
+        return redirect(url_for("login_page"))
+    return jsonify({"error": "No autenticado"}), 401
+
+
+@app.context_processor
+def inject_user():
+    return {
+        "is_authenticated": bool(session.get("user_id")),
+        "current_user_name": session.get("user_name"),
+        "current_user_email": session.get("user_email"),
+    }
+
+
 init_db()
 
 
@@ -105,7 +163,94 @@ init_db()
 
 @app.route("/")
 def home():
+    if not session.get("user_id"):
+        return redirect(url_for("login_page"))
     return redirect(url_for("cars_page"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    if request.method == "GET":
+        if session.get("user_id"):
+            return redirect(url_for("cars_page"))
+        return render_template("auth/login.html", error=None)
+
+    data = request.get_json(silent=True) if request.is_json else request.form
+    email = (data.get("email") or "").strip().lower()
+    password = (data.get("password") or "").strip()
+
+    if not email or not password:
+        error = "Faltan campos obligatorios: email, password"
+        if request.is_json:
+            return jsonify({"error": error}), 400
+        return render_template("auth/login.html", error=error), 400
+
+    conn = get_db_connection()
+    user = conn.execute(
+        "SELECT id, name, email, password FROM users WHERE email = ?",
+        (email,),
+    ).fetchone()
+
+    if user is None or not verify_password(user["password"], password):
+        conn.close()
+        error = "Credenciales invalidas"
+        if request.is_json:
+            return jsonify({"error": error}), 401
+        return render_template("auth/login.html", error=error), 401
+
+    # Migra automaticamente passwords antiguas guardadas en texto plano.
+    if not (user["password"].startswith("scrypt:") or user["password"].startswith("pbkdf2:")):
+        conn.execute(
+            "UPDATE users SET password = ? WHERE id = ?",
+            (generate_password_hash(password), user["id"]),
+        )
+        conn.commit()
+
+    conn.close()
+    session.clear()
+    session["user_id"] = user["id"]
+    session["user_name"] = user["name"]
+    session["user_email"] = user["email"]
+
+    if request.is_json:
+        return jsonify({"message": "Login correcto"}), 200
+
+    return redirect(url_for("cars_page"))
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register_page():
+    if request.method == "GET":
+        return render_template("auth/register.html", error=None)
+
+    data = request.get_json(silent=True) if request.is_json else request.form
+    name = (data.get("name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = (data.get("password") or "").strip()
+
+    if not name or not email or not password:
+        error = "Faltan campos obligatorios: name, email, password"
+        if request.is_json:
+            return jsonify({"error": error}), 400
+        return render_template("auth/register.html", error=error), 400
+
+    user_id, create_error = create_user_in_db(name, email, password)
+    if create_error == "email_exists":
+        error = "El email ya esta registrado"
+        if request.is_json:
+            return jsonify({"error": error}), 409
+        return render_template("auth/register.html", error=error), 409
+
+    if request.is_json:
+        return jsonify({"message": "Usuario creado", "id": user_id}), 201
+
+    return redirect(url_for("login_page"))
+
+
+@app.route("/logout", methods=["GET"])
+def logout():
+    session.clear()
+    return redirect(url_for("login_page"))
 
 
 @app.route("/init-db")
@@ -196,8 +341,6 @@ def view_car_documents(car_id):
     """, (car_id,)).fetchall()
 
     conn.close()
-
-    # ✅ FIX: aquí debe ir el template por-carro
     return render_template("documents/car_documents.html", car=car, documents=documents)
 
 
@@ -325,28 +468,16 @@ def delete_document_template(doc_id):
 def create_user():
     data = request.get_json(silent=True) or {}
 
-    name = data.get("name")
-    email = data.get("email")
-    password = data.get("password")
+    name = (data.get("name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = (data.get("password") or "").strip()
 
     if not name or not email or not password:
         return jsonify({"error": "Faltan campos obligatorios: name, email, password"}), 400
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute(
-            "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
-            (name, email, password),
-        )
-        conn.commit()
-        user_id = cursor.lastrowid
-    except sqlite3.IntegrityError:
-        conn.close()
+    user_id, create_error = create_user_in_db(name, email, password)
+    if create_error == "email_exists":
         return jsonify({"error": "El email ya está registrado"}), 409
-
-    conn.close()
     return jsonify({"message": "Usuario creado", "id": user_id}), 201
 
 

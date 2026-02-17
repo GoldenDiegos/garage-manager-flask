@@ -10,12 +10,21 @@
 <body>
   <header class="site-header">
     <h1 class="brand">Garage Manager</h1>
-   <nav class="site-nav">
-  <a href="/view/cars">Cars</a>
-  <a href="/view/users">Users</a>
-  <a href="/view/services">Services</a>
-  <a href="/view/documents">Documents</a>
-</nav>
+    <nav class="site-nav">
+      {% if is_authenticated %}
+        <a href="/view/cars">Cars</a>
+        <a href="/view/users">Users</a>
+        <a href="/view/services">Services</a>
+        <a href="/view/documents">Documents</a>
+        <a href="/logout">Logout</a>
+      {% else %}
+        <a href="/login">Login</a>
+        <a href="/register">Create User</a>
+      {% endif %}
+    </nav>
+    {% if is_authenticated and current_user_email %}
+      <small>Sesion: {{ current_user_email }}</small>
+    {% endif %}
 
   </header>
 
